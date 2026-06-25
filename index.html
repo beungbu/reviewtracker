@@ -398,20 +398,20 @@ function todayKo(){ const d=new Date(); const days=['일','월','화','수','목
 // ════════════════════════════════════════════
 function getSubj(id){ return S.subjects.find(s=>s.id===id)||null; }
 
-function buildSchedule(createdDate){
-  // 1차만 생성, 이후 차수는 체크할 때마다 동적으로 추가
+function buildSchedule(createdDate, firstResult){
+  // 첫 풀이 결과에 따라 1차 간격 결정
+  const interval = firstResult === 'X' ? STEP_X[0] : STEP_O[0];
   return [{
     round: 0,
-    scheduledDate: addDays(createdDate, STEP_INTERVALS[0]),
+    scheduledDate: addDays(createdDate, interval),
     result: null,
     completedDate: null
   }];
 }
 
 function addProblem(num, subjectId, createdDate, firstResult, memo){
-  // firstResult = 'O' or 'X' — the result when they first solved it
   const id = genId();
-  const rounds = buildSchedule(createdDate);
+  const rounds = buildSchedule(createdDate, firstResult);
   // If first solve was wrong, reschedule round 0 sooner (it's already +1 day, keep as is)
   // Store the initial solve info as a property
   S.problems[id] = {
@@ -791,11 +791,16 @@ function openDetail(pid){
   p.rounds.forEach((r,i)=>{
     const isToday=r.scheduledDate===td, isOd=r.scheduledDate<td&&r.result===null;
     let dc='rnd-date'; if(isToday)dc+=' hl'; else if(isOd)dc+=' od';
+    const resultIcon = r.result==='O'?'⭕':r.result==='X'?'❌':null;
+    const completedLine = r.completedDate
+      ? `<div style="font-size:10px;color:${r.result==='O'?'var(--green)':'var(--red)'};margin-top:2px;">${resultIcon} ${fmtFull(r.completedDate)} 완료</div>`
+      : '';
     rounds+=`<div class="sh-rnd">
       <span class="round-pip ${ROUND_CLASSES[i]}" style="min-width:38px">${ROUND_NAMES[i]}</span>
       <div class="rnd-info">
         <div class="rnd-name">${ROUND_NAMES[i]}</div>
-        <div class="${dc}">${fmtFull(r.scheduledDate)}${isToday?' 📌':isOd?' ⚠️':''}</div>
+        <div class="${dc}">예정 ${fmtFull(r.scheduledDate)}${isToday?' 📌':isOd?' ⚠️':''}</div>
+        ${completedLine}
       </div>
       <div class="ox-g">
         <button class="ox-t ${r.result==='O'?'ao':''}" onclick="setDetailRound('${pid}',${i},'O')">O</button>
@@ -1120,7 +1125,28 @@ function renderHist(){
     const na=parseFloat(a.num)||0,nb=parseFloat(b.num)||0; return na-nb;
   });
 
-  const chips=[{k:'all',l:'전체'},{k:'wrong',l:'오답 포함'},{k:'done',l:'완료'}];
+  // 완료된 차수 수 계산 (result !== null인 것)
+  function completedRoundsCount(p){
+    return p.rounds.filter(r=>r.result!==null).length;
+  }
+  // 현재 진행 중인 차수 (다음에 풀어야 할 차수)
+  function currentRound(p){
+    const done = completedRoundsCount(p);
+    return done; // 0이면 1차 대기, 1이면 2차 대기 ...
+  }
+
+  const chips=[
+    {k:'all',l:'전체'},
+    {k:'wrong',l:'오답 포함'},
+    {k:'r0',l:'1차 대기'},
+    {k:'r1',l:'1차 완료'},
+    {k:'r2',l:'2차 완료'},
+    {k:'r3',l:'3차 완료'},
+    {k:'r4',l:'4차 완료'},
+    {k:'r5',l:'5차 완료'},
+    {k:'r6+',l:'5차+'},
+    {k:'done',l:'✅ 완료'},
+  ];
   let html=`<div class="hist-filter">`;
   chips.forEach(c=>{ html+=`<div class="chip ${histFilter===c.k?'active':''}" onclick="setHistFilter('${c.k}')">${c.l}</div>`; });
 
@@ -1134,21 +1160,33 @@ function renderHist(){
   probs.forEach(p=>{
     const hasWrong=p.rounds.some(r=>r.result==='X')||p.firstResult==='X';
     const allDone=isCompleted(p);
+    const doneCount=completedRoundsCount(p);
+    const cur=currentRound(p);
+
     if(histFilter==='wrong'&&!hasWrong)return;
     if(histFilter==='done'&&!allDone)return;
+    if(histFilter==='r0'&&cur!==0)return;
+    if(histFilter==='r1'&&(cur!==1||allDone))return;
+    if(histFilter==='r2'&&(cur!==2||allDone))return;
+    if(histFilter==='r3'&&(cur!==3||allDone))return;
+    if(histFilter==='r4'&&(cur!==4||allDone))return;
+    if(histFilter==='r5'&&(cur!==5||allDone))return;
+    if(histFilter==='r6+'&&(cur<6||allDone))return;
     if(S.subjects.find(s=>s.id===histFilter)&&p.subjectId!==histFilter)return;
     shown++;
     const subj=getSubj(p.subjectId);
     const sTag=subj?`<span class="subj-pip" style="background:${subj.color}18;color:${subj.color}">${subj.name}</span>`:'';
     const rdots=p.rounds.map((r,i)=>{
       const cls=r.result==='O'?'o':r.result==='X'?'x':'pending';
-      return`<div class="hist-round-dot ${cls}">${i+1}${r.result||''}`;+`</div>`;
+      return`<div class="hist-round-dot ${cls}">${i+1}${r.result||''}</div>`;
     }).join('');
+    const completedBadge=allDone?`<span style="font-size:10px;padding:2px 6px;border-radius:6px;background:rgba(34,217,138,.12);color:var(--green);font-weight:700;">완료</span>`:'';
     html+=`<div class="hist-card" onclick="openDetail('${p.id}')">
       <div class="hist-top">
         <span class="hist-num">${p.num}</span>${sTag}
         <span class="hist-date">${fmtShort(p.createdDate)}</span>
         ${p.firstResult==='O'?'<span style="color:var(--green);font-size:12px">⭕</span>':'<span style="color:var(--red);font-size:12px">❌</span>'}
+        ${completedBadge}
       </div>
       <div class="hist-rounds">${rdots}</div>
     </div>`;
