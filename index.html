@@ -311,14 +311,18 @@ textarea.text-input{resize:none;}
 // ════════════════════════════════════════════
 //  CONSTANTS
 // ════════════════════════════════════════════
-// SM-2 style intervals per round (correct)
-// If wrong, reset interval shorter
-const INTERVALS_OK  = [1, 3, 7, 14, 30];   // round 0..4 if correct
-const INTERVALS_FAIL= [1, 1, 3,  7, 14];   // if wrong on that round, next review sooner
-const STEP_INTERVALS = [1, 2, 4, 7, 16];   // 각 차수 완료 후 다음 차수까지 간격 (일)
-const MAX_ROUNDS = 5;
-const ROUND_NAMES = ['1차','2차','3차','4차','5차'];
-const ROUND_CLASSES = ['r1','r2','r3','r4','r5'];
+// O/X 별 다음 차수까지 간격 (일)
+// O: 2 → 4 → 7 → 16 → 30 (이후 완료 조건 체크)
+// X: 1 → 2 → 4 → 7 → 이후 7일 반복
+const INTERVALS_OK  = [1, 3, 7, 14, 30];
+const INTERVALS_FAIL= [1, 1, 3,  7, 14];
+const STEP_O = [2, 4, 7, 16, 30];
+const STEP_X = [1, 2, 4, 7, 7];
+const STEP_INTERVALS = STEP_O;
+const MIN_ROUNDS = 5;
+const MAX_ROUNDS = 99;
+const ROUND_NAMES = ['1차','2차','3차','4차','5차','6차','7차','8차','9차','10차'];
+const ROUND_CLASSES = ['r1','r2','r3','r4','r5','r1','r2','r3','r4','r5'];
 
 const PALETTE = ['#4f8ef7','#22d98a','#f7b731','#f472b6','#7c5cfc','#f5615c','#38bdf8','#fb923c','#a3e635','#e879f9'];
 
@@ -680,17 +684,24 @@ function addProblems(){
   showPage('today');
 }
 
-// 체크한 날 기준으로 다음 차수 생성 (없으면 추가, 있으면 날짜만 갱신)
-function rescheduleNext(p, roundIdx, completedDate){
+// 완료 조건: 최소 5차 이상 + 마지막 2번 연속 O
+function isCompleted(p){
+  const done = p.rounds.filter(r => r.result !== null);
+  if(done.length < MIN_ROUNDS) return false;
+  const last2 = done.slice(-2);
+  return last2.length === 2 && last2[0].result === 'O' && last2[1].result === 'O';
+}
+
+// 체크한 날 기준으로 다음 차수 생성
+function rescheduleNext(p, roundIdx, completedDate, result){
+  if(isCompleted(p)) return; // 완료 조건 충족하면 생성 안 함
   const nextIdx = roundIdx + 1;
-  if(nextIdx >= MAX_ROUNDS) return; // 5차까지만
-  const interval = STEP_INTERVALS[nextIdx] || 1;
+  const intervals = result === 'X' ? STEP_X : STEP_O;
+  const interval = intervals[Math.min(roundIdx, intervals.length - 1)];
   const nextDate = addDays(completedDate, interval);
   if(p.rounds[nextIdx]){
-    // 이미 있으면 날짜만 갱신 (기존 데이터 호환)
     p.rounds[nextIdx].scheduledDate = nextDate;
   } else {
-    // 없으면 새로 추가
     p.rounds.push({
       round: nextIdx,
       scheduledDate: nextDate,
@@ -704,11 +715,10 @@ function markRound(pid, roundIdx, result){
   const p=S.problems[pid]; if(!p)return;
   const round=p.rounds[roundIdx]; if(!round)return;
   const prev=round.result;
-  // toggle off
   if(prev===result){ round.result=null; round.completedDate=null; saveState(); showPage(page); return; }
   round.result=result;
   round.completedDate=today();
-  rescheduleNext(p, roundIdx, today());
+  rescheduleNext(p, roundIdx, today(), result);
   saveState();
   showPage(page);
   showToast(result==='O'?'✅ 정답 기록':'❌ 오답 기록');
@@ -845,7 +855,7 @@ function setDetailRound(pid,r,val){
   const isToggleOff = prev===val;
   p.rounds[r].result=isToggleOff?null:val;
   p.rounds[r].completedDate=isToggleOff?null:today();
-  if(!isToggleOff) rescheduleNext(p, r, today());
+  if(!isToggleOff) rescheduleNext(p, r, today(), val);
   saveState();
   openDetail(pid);
   if(page==='today') document.getElementById('content').innerHTML=renderToday();
@@ -1095,7 +1105,7 @@ function calMarkRound(pid, roundIdx, result){
   const prev=round.result;
   const isToggleOff = prev===result;
   if(isToggleOff){ round.result=null; round.completedDate=null; }
-  else { round.result=result; round.completedDate=today(); rescheduleNext(p, roundIdx, today()); }
+  else { round.result=result; round.completedDate=today(); rescheduleNext(p, roundIdx, today(), result); }
   saveState();
   document.getElementById('content').innerHTML=renderCal();
   showToast(result==='O'?'✅ 정답 기록':'❌ 오답 기록');
@@ -1110,7 +1120,7 @@ function renderHist(){
     const na=parseFloat(a.num)||0,nb=parseFloat(b.num)||0; return na-nb;
   });
 
-  const chips=[{k:'all',l:'전체'},{k:'wrong',l:'오답 포함'},{k:'done',l:'5회 완료'}];
+  const chips=[{k:'all',l:'전체'},{k:'wrong',l:'오답 포함'},{k:'done',l:'완료'}];
   let html=`<div class="hist-filter">`;
   chips.forEach(c=>{ html+=`<div class="chip ${histFilter===c.k?'active':''}" onclick="setHistFilter('${c.k}')">${c.l}</div>`; });
 
@@ -1123,7 +1133,7 @@ function renderHist(){
   let shown=0;
   probs.forEach(p=>{
     const hasWrong=p.rounds.some(r=>r.result==='X')||p.firstResult==='X';
-    const allDone=p.rounds.every(r=>r.result!==null);
+    const allDone=isCompleted(p);
     if(histFilter==='wrong'&&!hasWrong)return;
     if(histFilter==='done'&&!allDone)return;
     if(S.subjects.find(s=>s.id===histFilter)&&p.subjectId!==histFilter)return;
