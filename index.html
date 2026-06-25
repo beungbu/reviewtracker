@@ -679,6 +679,14 @@ function addProblems(){
   showPage('today');
 }
 
+// 체크한 날 기준으로 다음 차수 날짜 재계산
+function rescheduleNext(p, roundIdx, completedDate){
+  const nextIdx = roundIdx + 1;
+  if(nextIdx >= p.rounds.length) return; // 마지막 차수면 끝
+  const interval = INTERVALS_OK[nextIdx]; // 다음 차수 간격
+  p.rounds[nextIdx].scheduledDate = addDays(completedDate, interval);
+}
+
 function markRound(pid, roundIdx, result){
   const p=S.problems[pid]; if(!p)return;
   const round=p.rounds[roundIdx]; if(!round)return;
@@ -687,6 +695,7 @@ function markRound(pid, roundIdx, result){
   if(prev===result){ round.result=null; round.completedDate=null; saveState(); showPage(page); return; }
   round.result=result;
   round.completedDate=today();
+  rescheduleNext(p, roundIdx, today());
   saveState();
   showPage(page);
   showToast(result==='O'?'✅ 정답 기록':'❌ 오답 기록');
@@ -820,8 +829,10 @@ function saveDetailNum(pid){
 function setDetailRound(pid,r,val){
   const p=S.problems[pid]; if(!p)return;
   const prev=p.rounds[r].result;
-  p.rounds[r].result=prev===val?null:val;
-  p.rounds[r].completedDate=prev===val?null:today();
+  const isToggleOff = prev===val;
+  p.rounds[r].result=isToggleOff?null:val;
+  p.rounds[r].completedDate=isToggleOff?null:today();
+  if(!isToggleOff) rescheduleNext(p, r, today());
   saveState();
   openDetail(pid);
   if(page==='today') document.getElementById('content').innerHTML=renderToday();
@@ -1069,8 +1080,9 @@ function calMarkRound(pid, roundIdx, result){
   const p=S.problems[pid]; if(!p)return;
   const round=p.rounds[roundIdx]; if(!round)return;
   const prev=round.result;
-  if(prev===result){ round.result=null; round.completedDate=null; }
-  else { round.result=result; round.completedDate=today(); }
+  const isToggleOff = prev===result;
+  if(isToggleOff){ round.result=null; round.completedDate=null; }
+  else { round.result=result; round.completedDate=today(); rescheduleNext(p, roundIdx, today()); }
   saveState();
   document.getElementById('content').innerHTML=renderCal();
   showToast(result==='O'?'✅ 정답 기록':'❌ 오답 기록');
