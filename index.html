@@ -679,11 +679,22 @@ function addProblems(){
   showPage('today');
 }
 
+// 각 차수 완료 후 다음 차수까지의 실제 간격
+// INTERVALS_OK = [1, 3, 7, 14, 30] 은 최초 푼 날 기준 누적 간격
+// 차수 간 실제 간격: 1차완료→2차: 3-1=2일, 2차→3차: 7-3=4일, 3차→4차: 14-7=7일, 4차→5차: 30-14=16일
+const STEP_INTERVALS = [
+  INTERVALS_OK[0],                              // 0차(첫풀이) → 1차: 1일
+  INTERVALS_OK[1] - INTERVALS_OK[0],            // 1차 → 2차: 2일
+  INTERVALS_OK[2] - INTERVALS_OK[1],            // 2차 → 3차: 4일
+  INTERVALS_OK[3] - INTERVALS_OK[2],            // 3차 → 4차: 7일
+  INTERVALS_OK[4] - INTERVALS_OK[3],            // 4차 → 5차: 16일
+];
+
 // 체크한 날 기준으로 다음 차수 날짜 재계산
 function rescheduleNext(p, roundIdx, completedDate){
   const nextIdx = roundIdx + 1;
-  if(nextIdx >= p.rounds.length) return; // 마지막 차수면 끝
-  const interval = INTERVALS_OK[nextIdx]; // 다음 차수 간격
+  if(nextIdx >= p.rounds.length) return;
+  const interval = STEP_INTERVALS[nextIdx] || INTERVALS_OK[nextIdx];
   p.rounds[nextIdx].scheduledDate = addDays(completedDate, interval);
 }
 
