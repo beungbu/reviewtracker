@@ -1239,13 +1239,12 @@ function renderSettings(){
   // Subject stats
   const subjStats=S.subjects.map(s=>{
     const probs=Object.values(S.problems).filter(p=>p.subjectId===s.id);
-    const revDone=probs.reduce((a,p)=>a+p.rounds.filter(r=>r.result!==null).length,0);
-    const revTotal=probs.length*MAX_ROUNDS;
-    const pct=revTotal?Math.round(revDone/revTotal*100):0;
+    const completedCount=probs.filter(p=>isCompleted(p)).length;
+    const pct=probs.length?Math.round(completedCount/probs.length*100):0;
     return `<div style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
         <span style="font-size:12px;font-weight:600;color:${s.color}">${s.name}</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">${probs.length}문제 · ${pct}%</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">${probs.length}문제 · ${completedCount}완료 · ${pct}%</span>
       </div>
       <div class="pbar"><div class="pbar-fill" style="width:${pct}%;background:linear-gradient(90deg,${s.color},${s.color}aa)"></div></div>
     </div>`;
