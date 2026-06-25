@@ -385,8 +385,8 @@ function loadState(){ try{ return JSON.parse(localStorage.getItem('rsched_v1'));
 // ════════════════════════════════════════════
 //  DATE UTILS
 // ════════════════════════════════════════════
-function today(){ return new Date().toISOString().slice(0,10); }
-function addDays(ds,d){ if(!ds)return null; const dt=new Date(ds+'T00:00:00'); dt.setDate(dt.getDate()+d); return dt.toISOString().slice(0,10); }
+function today(){ const d=new Date(); return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function addDays(ds,d){ if(!ds)return null; const dt=new Date(ds+'T00:00:00'); dt.setDate(dt.getDate()+d); return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; }
 function fmtShort(ds){ if(!ds)return'—'; const d=new Date(ds+'T00:00:00'); return`${d.getMonth()+1}/${d.getDate()}`; }
 function fmtFull(ds){ if(!ds)return'—'; const d=new Date(ds+'T00:00:00'); return`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; }
 function fmtKo(ds){ if(!ds)return'—'; const d=new Date(ds+'T00:00:00'); const days=['일','월','화','수','목','금','토']; return`${d.getMonth()+1}월 ${d.getDate()}일 (${days[d.getDay()]})`; }
