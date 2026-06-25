@@ -1,4 +1,4 @@
-const CACHE = 'review-tracker-v2';
+const CACHE = 'review-tracker-v3';
 const ASSETS = [
   './index.html',
   './manifest.json'
