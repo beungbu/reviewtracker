@@ -236,6 +236,30 @@ textarea.text-input{resize:none;}
 /* ── BADGE / TAG ── */
 .badge-done{font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(34,217,138,.12);color:var(--green);font-weight:700;}
 .badge-miss{font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(245,97,92,.12);color:var(--red);font-weight:700;}
+
+/* CAL DATE INPUT PANEL */
+.cal-input-panel{margin-top:14px;border-top:1px solid var(--border);padding-top:14px;}
+.cal-input-toggle{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;cursor:pointer;user-select:none;padding:2px 0;}
+.cal-input-toggle .ci-arrow{font-size:11px;color:var(--muted);transition:transform .2s;margin-left:auto;}
+.cal-input-toggle .ci-arrow.open{transform:rotate(180deg);}
+.cal-input-body{display:none;margin-top:10px;}
+.cal-input-body.open{display:block;}
+/* CAL DETAIL ACTION ROW */
+.cal-item-action{display:flex;gap:5px;flex-shrink:0;align-items:center;}
+.cal-ox-sm{width:30px;height:26px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;transition:all .12s;}
+.cal-ox-sm:active{transform:scale(.9);}
+.cal-ox-sm.o-a{background:rgba(34,217,138,.15);border-color:var(--green);color:var(--green);}
+.cal-ox-sm.x-a{background:rgba(245,97,92,.15);border-color:var(--red);color:var(--red);}
+/* MISSED tag */
+.missed-tag{font-size:10px;padding:1px 6px;border-radius:6px;background:rgba(245,97,92,.12);color:var(--red);font-weight:700;}
+/* WEEK HEATMAP */
+.week-row{display:flex;gap:4px;margin-top:8px;}
+.week-cell{flex:1;height:32px;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:9px;font-weight:700;border:1px solid var(--border);gap:1px;}
+.week-day-label{font-size:8px;opacity:.7;}
+.wc-none{background:var(--surface2);color:var(--muted);}
+.wc-low{background:rgba(79,142,247,.15);color:var(--accent);}
+.wc-mid{background:rgba(79,142,247,.3);color:var(--accent);}
+.wc-hi{background:rgba(79,142,247,.55);color:#fff;}
 </style>
 </head>
 <body>
@@ -346,6 +370,9 @@ let inputOX = null;
 let pickedColor = PALETTE[0];
 let histFilter = 'all';
 let calYear, calMonth, calSelectedDate;
+let calInputOpen = false;
+let calInputOX = null;
+let calInputSubj = S.subjects[0]?.id || '';
 
 function saveState(){ localStorage.setItem('rsched_v1', JSON.stringify(S)); }
 function loadState(){ try{ return JSON.parse(localStorage.getItem('rsched_v1')); }catch{ return null; } }
@@ -820,13 +847,14 @@ function renderCal(){
   const startDow=firstDay.getDay();
   const activeDates=getDatesWithActivity();
 
-  // Color dots for a date
   function dotsForDate(ds){
     const revs=getReviewsForDate(ds);
     const created=getCreatedOnDate(ds);
-    const pending=revs.filter(r=>r.round.result===null).length;
+    const pending=revs.filter(r=>r.round.result===null&&r.round.scheduledDate>=td).length;
     const done=revs.filter(r=>r.round.result!==null).length;
+    const missed=revs.filter(r=>r.round.result===null&&r.round.scheduledDate<td).length;
     let dots='';
+    if(missed>0) dots+=`<div class="dot" style="background:var(--red)"></div>`;
     if(pending>0) dots+=`<div class="dot" style="background:var(--accent)"></div>`;
     if(done>0) dots+=`<div class="dot" style="background:var(--green)"></div>`;
     if(created.length>0) dots+=`<div class="dot" style="background:var(--yellow)"></div>`;
@@ -835,7 +863,6 @@ function renderCal(){
 
   const DOWS=['일','월','화','수','목','금','토'];
   let grid=DOWS.map(d=>`<div class="cal-dow">${d}</div>`).join('');
-  // blank cells
   for(let i=0;i<startDow;i++) grid+=`<div></div>`;
   for(let d=1;d<=lastDay.getDate();d++){
     const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -848,13 +875,20 @@ function renderCal(){
     </div>`;
   }
 
-  // Detail for selected date
+  // Build selected date detail
   const selRevs=getReviewsForDate(calSelectedDate);
   const selCreated=getCreatedOnDate(calSelectedDate);
+  // Missed reviews scheduled before today but not done, displayed on calSelectedDate
+  const selMissed = selRevs.filter(({round})=>round.result===null && calSelectedDate < td);
+  const selDone = selRevs.filter(({round})=>round.result!==null);
+  const selPending = selRevs.filter(({round})=>round.result===null && calSelectedDate >= td);
+
   let detail='';
-  if(selRevs.length===0&&selCreated.length===0){
+  if(selRevs.length===0 && selCreated.length===0){
     detail=`<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">이 날은 일정이 없어요</div>`;
   }
+
+  // Created problems section
   if(selCreated.length>0){
     detail+=`<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">📝 처음 푼 문제</div>`;
     selCreated.forEach(p=>{
@@ -868,20 +902,97 @@ function renderCal(){
       </div>`;
     });
   }
-  if(selRevs.length>0){
-    detail+=`<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px;margin:${selCreated.length?12:0}px 0 8px;text-transform:uppercase;">🔁 복습 일정</div>`;
-    selRevs.forEach(({p,round})=>{
+
+  // Missed reviews for this date
+  if(selMissed.length>0){
+    detail+=`<div style="font-size:11px;font-weight:700;color:var(--red);letter-spacing:1px;margin:${selCreated.length?12:0}px 0 8px;text-transform:uppercase;">⚠️ 못한 복습 <span style="font-weight:400">(${selMissed.length}건)</span></div>`;
+    selMissed.forEach(({p,round})=>{
       const subj=getSubj(p.subjectId);
-      const resIcon=round.result==='O'?'⭕':round.result==='X'?'❌':'⬜';
+      detail+=`<div class="cal-item" style="border-left:3px solid var(--red);padding-left:8px;" onclick="openDetail('${p.id}')">
+        <div class="cal-item-num">${p.num}</div>
+        <div class="cal-item-info">
+          <div style="font-size:13px;font-weight:600">${ROUND_NAMES[round.round]} <span class="missed-tag">미완료</span></div>
+          <div class="cal-item-sub">${subj?.name||'—'}</div>
+        </div>
+        <div class="cal-item-action">
+          <button class="cal-ox-sm ${round.result==='O'?'o-a':''}" onclick="event.stopPropagation();calMarkRound('${p.id}',${round.round},'O')">O</button>
+          <button class="cal-ox-sm ${round.result==='X'?'x-a':''}" onclick="event.stopPropagation();calMarkRound('${p.id}',${round.round},'X')">X</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  // Pending reviews for this date
+  if(selPending.length>0){
+    detail+=`<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px;margin:${selCreated.length||selMissed.length?12:0}px 0 8px;text-transform:uppercase;">📌 복습 예정 (${selPending.length}건)</div>`;
+    selPending.forEach(({p,round})=>{
+      const subj=getSubj(p.subjectId);
       detail+=`<div class="cal-item" onclick="openDetail('${p.id}')">
         <div class="cal-item-num">${p.num}</div>
         <div class="cal-item-info">
-          <div style="font-size:13px;font-weight:600">${ROUND_NAMES[round.round]} ${resIcon}</div>
+          <div style="font-size:13px;font-weight:600">${ROUND_NAMES[round.round]} ⬜</div>
           <div class="cal-item-sub">${subj?.name||'—'}</div>
         </div>
-        <span class="round-pip ${ROUND_CLASSES[round.round]}">${round.round+1}차</span>
+        <div class="cal-item-action">
+          <button class="cal-ox-sm" onclick="event.stopPropagation();calMarkRound('${p.id}',${round.round},'O')">O</button>
+          <button class="cal-ox-sm" onclick="event.stopPropagation();calMarkRound('${p.id}',${round.round},'X')">X</button>
+        </div>
       </div>`;
     });
+  }
+
+  // Done reviews
+  if(selDone.length>0){
+    detail+=`<div style="font-size:11px;font-weight:700;color:var(--green);letter-spacing:1px;margin:${selCreated.length||selMissed.length||selPending.length?12:0}px 0 8px;text-transform:uppercase;">✅ 완료 (${selDone.length}건)</div>`;
+    selDone.forEach(({p,round})=>{
+      const subj=getSubj(p.subjectId);
+      detail+=`<div class="cal-item" style="opacity:.7" onclick="openDetail('${p.id}')">
+        <div class="cal-item-num">${p.num}</div>
+        <div class="cal-item-info">
+          <div style="font-size:13px;font-weight:600">${ROUND_NAMES[round.round]} ${round.result==='O'?'⭕':'❌'}</div>
+          <div class="cal-item-sub">${subj?.name||'—'}</div>
+        </div>
+        <div class="cal-item-action">
+          <button class="cal-ox-sm ${round.result==='O'?'o-a':''}" onclick="event.stopPropagation();calMarkRound('${p.id}',${round.round},'O')">O</button>
+          <button class="cal-ox-sm ${round.result==='X'?'x-a':''}" onclick="event.stopPropagation();calMarkRound('${p.id}',${round.round},'X')">X</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  // ── Problem input panel for selected date ──
+  const isPast = calSelectedDate <= td; // allow today and past
+  let inputPanel = '';
+  if(isPast){
+    const subjChips = S.subjects.map(s=>{
+      const sel = calInputSubj===s.id;
+      return `<div class="subj-chip ${sel?'sel':''}"
+        style="${sel?`border-color:${s.color};color:${s.color};background:${s.color}18`:''}"
+        onclick="calPickSubj('${s.id}','${s.color}')">${s.name}</div>`;
+    }).join('');
+
+    inputPanel = `<div class="cal-input-panel">
+      <div class="cal-input-toggle" onclick="toggleCalInput()">
+        <span>✏️ 이 날 문제 추가</span>
+        <span class="ci-arrow ${calInputOpen?'open':''}">▼</span>
+      </div>
+      <div class="cal-input-body ${calInputOpen?'open':''}">
+        <div class="field-label">과목</div>
+        <div class="subj-chips">${subjChips}</div>
+        <div class="field-label">문제 번호</div>
+        <input class="text-input mono-input" id="calInNum" type="text"
+          placeholder="예: 15  또는  1-10"
+          onkeydown="if(event.key==='Enter')addCalProblems()">
+        <div class="field-label">결과</div>
+        <div class="ox-row">
+          <button class="ox-big ${calInputOX==='O'?'o-sel':''}" onclick="calPickOX('O')">⭕ 맞음</button>
+          <button class="ox-big ${calInputOX==='X'?'x-sel':''}" onclick="calPickOX('X')">❌ 틀림</button>
+        </div>
+        <div class="field-label">메모 (선택)</div>
+        <textarea class="text-input" id="calInMemo" rows="2" placeholder="핵심 키워드, 틀린 이유 ..."></textarea>
+        <button class="add-btn" onclick="addCalProblems()">+ ${calSelectedDate===td?'오늘':'이 날'} 문제 추가</button>
+      </div>
+    </div>`;
   }
 
   return `<div class="cal-wrap">
@@ -894,13 +1005,76 @@ function renderCal(){
     <div class="cal-detail">
       <div class="cal-detail-title">📅 ${fmtKo(calSelectedDate)}</div>
       ${detail}
+      ${inputPanel}
     </div>
   </div><div style="height:20px"></div>`;
 }
 
-function calSelect(ds){ calSelectedDate=ds; document.getElementById('content').innerHTML=renderCal(); }
+function calSelect(ds){
+  calSelectedDate=ds;
+  calInputOpen=false;
+  calInputOX=null;
+  document.getElementById('content').innerHTML=renderCal();
+}
 function calPrev(){ calMonth--; if(calMonth<0){calMonth=11;calYear--;} document.getElementById('content').innerHTML=renderCal(); }
 function calNext(){ calMonth++; if(calMonth>11){calMonth=0;calYear++;} document.getElementById('content').innerHTML=renderCal(); }
+
+function toggleCalInput(){
+  calInputOpen=!calInputOpen;
+  document.getElementById('content').innerHTML=renderCal();
+}
+
+function calPickSubj(id,color){
+  calInputSubj=id;
+  document.querySelectorAll('.cal-input-body .subj-chip').forEach(e=>{
+    const s=S.subjects.find(x=>x.id===id);
+    const mine=s&&e.textContent.trim()===s.name;
+    e.classList.toggle('sel',mine);
+    if(mine){e.style.borderColor=color;e.style.color=color;e.style.background=color+'18';}
+    else{e.style.borderColor='';e.style.color='';e.style.background='';}
+  });
+}
+
+function calPickOX(v){
+  calInputOX=v;
+  document.querySelectorAll('.cal-input-body .ox-big').forEach(b=>b.classList.remove('o-sel','x-sel'));
+  const btns=document.querySelectorAll('.cal-input-body .ox-big');
+  if(v==='O') btns[0].classList.add('o-sel');
+  else btns[1].classList.add('x-sel');
+}
+
+function addCalProblems(){
+  const raw=(document.getElementById('calInNum')?.value||'').trim();
+  if(!raw){ showToast('문제 번호를 입력해주세요'); return; }
+  if(!calInputOX){ showToast('맞았는지 틀렸는지 체크해주세요'); return; }
+  const memo=(document.getElementById('calInMemo')?.value||'').trim();
+  const parts=raw.split(',').map(p=>p.trim()).filter(Boolean);
+  let count=0;
+  parts.forEach(part=>{
+    const dash=part.split('-');
+    if(dash.length===2&&!isNaN(dash[0])&&!isNaN(dash[1])){
+      const from=parseInt(dash[0]),to=parseInt(dash[1]);
+      for(let n=from;n<=to;n++){ addProblem(String(n),calInputSubj,calSelectedDate,calInputOX,memo); count++; }
+    } else {
+      addProblem(part,calInputSubj,calSelectedDate,calInputOX,memo); count++;
+    }
+  });
+  calInputOX=null;
+  calInputOpen=false;
+  showToast(`${count}문제 추가 ✅`);
+  document.getElementById('content').innerHTML=renderCal();
+}
+
+function calMarkRound(pid, roundIdx, result){
+  const p=S.problems[pid]; if(!p)return;
+  const round=p.rounds[roundIdx]; if(!round)return;
+  const prev=round.result;
+  if(prev===result){ round.result=null; round.completedDate=null; }
+  else { round.result=result; round.completedDate=today(); }
+  saveState();
+  document.getElementById('content').innerHTML=renderCal();
+  showToast(result==='O'?'✅ 정답 기록':'❌ 오답 기록');
+}
 
 // ════════════════════════════════════════════
 //  HISTORY PAGE
@@ -972,11 +1146,42 @@ function renderSettings(){
 
   const totalP=Object.keys(S.problems).length;
   const totalRev=Object.values(S.problems).reduce((a,p)=>a+p.rounds.filter(r=>r.result!==null).length,0);
+  const totalMissed=Object.values(S.problems).reduce((a,p)=>a+p.rounds.filter(r=>r.result===null&&r.scheduledDate<today()).length,0);
+  const totalWrong=Object.values(S.problems).reduce((a,p)=>a+(p.rounds.some(r=>r.result==='X')?1:0),0);
+
+  // Weekly heatmap (last 7 days)
+  const td=today();
+  const weekDays=['일','월','화','수','목','금','토'];
+  let weekCells='';
+  for(let i=6;i>=0;i--){
+    const ds=addDays(td,-i);
+    const revs=getReviewsForDate(ds);
+    const done=revs.filter(r=>r.round.result!==null).length;
+    const d=new Date(ds+'T00:00:00');
+    const label=weekDays[d.getDay()];
+    const cls=done===0?'wc-none':done<=2?'wc-low':done<=5?'wc-mid':'wc-hi';
+    weekCells+=`<div class="week-cell ${cls}"><span>${done||''}</span><span class="week-day-label">${label}</span></div>`;
+  }
+
+  // Subject stats
+  const subjStats=S.subjects.map(s=>{
+    const probs=Object.values(S.problems).filter(p=>p.subjectId===s.id);
+    const revDone=probs.reduce((a,p)=>a+p.rounds.filter(r=>r.result!==null).length,0);
+    const revTotal=probs.length*MAX_ROUNDS;
+    const pct=revTotal?Math.round(revDone/revTotal*100):0;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:12px;font-weight:600;color:${s.color}">${s.name}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">${probs.length}문제 · ${pct}%</span>
+      </div>
+      <div class="pbar"><div class="pbar-fill" style="width:${pct}%;background:linear-gradient(90deg,${s.color},${s.color}aa)"></div></div>
+    </div>`;
+  }).join('');
 
   return`<div class="settings-wrap">
     <div class="set-card">
       <div class="set-title">📊 통계</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;text-align:center;margin-bottom:12px;">
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;">
           <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--accent)">${totalP}</div>
           <div style="font-size:10px;color:var(--muted)">총 문제</div>
@@ -986,11 +1191,22 @@ function renderSettings(){
           <div style="font-size:10px;color:var(--muted)">완료 복습</div>
         </div>
         <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--purple)">${totalP*5}</div>
-          <div style="font-size:10px;color:var(--muted)">목표 복습</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--red)">${totalMissed}</div>
+          <div style="font-size:10px;color:var(--muted)">밀린 복습</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--yellow)">${totalWrong}</div>
+          <div style="font-size:10px;color:var(--muted)">오답 문제</div>
         </div>
       </div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;">최근 7일 복습 완료</div>
+      <div class="week-row">${weekCells}</div>
     </div>
+
+    ${S.subjects.length>0?`<div class="set-card">
+      <div class="set-title">📈 과목별 진도</div>
+      ${subjStats||'<div style="color:var(--muted);font-size:13px;text-align:center;padding:8px">문제가 없어요</div>'}
+    </div>`:''}
 
     <div class="set-card">
       <div class="set-title">📚 과목 관리</div>
@@ -1089,7 +1305,7 @@ if('serviceWorker' in navigator){
 //  INIT
 // ════════════════════════════════════════════
 document.getElementById('topDate').textContent = todayKo().toUpperCase();
-if(S.subjects[0]) inputSubj=S.subjects[0].id;
+if(S.subjects[0]){ inputSubj=S.subjects[0].id; calInputSubj=S.subjects[0].id; }
 showPage('today');
 </script>
 </body>
